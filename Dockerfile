@@ -1,22 +1,15 @@
-FROM node:20-alpine AS development-dependencies-env
-COPY . /app
+FROM node:22-alpine AS build-env
 WORKDIR /app
-RUN npm ci
+RUN corepack enable pnpm && corepack install -g pnpm@latest-10
+COPY pnpm-lock.yaml ./
+RUN pnpm fetch
 
-FROM node:20-alpine AS production-dependencies-env
-COPY ./package.json package-lock.json /app/
-WORKDIR /app
-RUN npm ci --omit=dev
+ADD . ./
+RUN pnpm install -r --offline
+RUN pnpm build
 
-FROM node:20-alpine AS build-env
-COPY . /app/
-COPY --from=development-dependencies-env /app/node_modules /app/node_modules
-WORKDIR /app
-RUN npm run build
+FROM nginx
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY --from=build-env /app/build/client/ /app/
 
-FROM node:20-alpine
-COPY ./package.json package-lock.json /app/
-COPY --from=production-dependencies-env /app/node_modules /app/node_modules
-COPY --from=build-env /app/build /app/build
-WORKDIR /app
-CMD ["npm", "run", "start"]
+
